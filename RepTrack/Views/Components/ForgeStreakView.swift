@@ -21,7 +21,7 @@ struct ForgeStreakView: View {
         let content = HStack(spacing: ForgeTheme.spaceM) {
             Image(systemName: "flame.fill")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(isActive ? ForgeTheme.goldGradient : ForgeTheme.tertiaryText)
+                .foregroundStyle(isActive ? AnyShapeStyle(ForgeTheme.goldGradient) : AnyShapeStyle(ForgeTheme.tertiaryText))
                 .scaleEffect(bump)
 
             VStack(alignment: .leading, spacing: 3) {
