@@ -12,15 +12,29 @@ private struct WorkoutDeleteItem: Identifiable {
     var id: PersistentIdentifier { workout.persistentModelID }
 }
 
+private struct TemplateStartItem: Identifiable {
+    let template: WorkoutTemplate
+    var id: PersistentIdentifier { template.persistentModelID }
+}
+
+private struct WorkoutDuplicateItem: Identifiable {
+    let source: Workout
+    var id: PersistentIdentifier { source.persistentModelID }
+}
+
 struct WorkoutListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var notices: ForgeNoticeCenter
     @State private var viewModel = WorkoutsViewModel()
     @State private var showingAddWorkout = false
+    @State private var showingTemplates = false
+    @State private var showingAnalytics = false
     @State private var selectedWorkout: Workout?
     @State private var showingSettings = false
     @State private var workoutToDelete: WorkoutDeleteItem?
+    @State private var pendingTemplateStart: TemplateStartItem?
+    @State private var pendingDuplicateStart: WorkoutDuplicateItem?
 
     private var calendar: Calendar { Calendar.current }
     private var today: Date { calendar.startOfDay(for: Date()) }
@@ -29,13 +43,25 @@ struct WorkoutListView: View {
         viewModel.workouts.filter { calendar.isDate($0.date, inSameDayAs: today) }
     }
 
-    private var todayWorkout: Workout? {
-        todayWorkouts.sorted(by: { $0.date > $1.date }).first
+    private var todayActiveWorkout: Workout? {
+        todayWorkouts
+            .filter { !$0.isFinished }
+            .sorted(by: { $0.date > $1.date })
+            .first
+    }
+
+    private var todayCompletedWorkouts: [Workout] {
+        todayWorkouts
+            .filter(\.isFinished)
+            .sorted(by: { $0.date > $1.date })
+    }
+
+    private var todayTargetWorkout: Workout? {
+        todayActiveWorkout ?? todayWorkouts.sorted(by: { $0.date > $1.date }).first
     }
 
     private var isTodayDone: Bool {
-        guard let w = todayWorkout else { return false }
-        return !w.exercises.isEmpty
+        !todayCompletedWorkouts.isEmpty
     }
 
     private var previousWorkouts: [Workout] {
@@ -100,8 +126,21 @@ struct WorkoutListView: View {
                         showingAddWorkout = false
                     })
                 }
+                .sheet(isPresented: $showingTemplates) {
+                    TemplatesView { template in
+                        if todayTargetWorkout != nil {
+                            pendingTemplateStart = TemplateStartItem(template: template)
+                        } else if let newWorkout = viewModel.addWorkout(from: template, date: today) {
+                            selectedWorkout = newWorkout
+                            notices.showInfo("Workout created from template.")
+                        }
+                    }
+                }
                 .navigationDestination(item: $selectedWorkout) { workout in
                     WorkoutDetailView(workout: workout)
+                }
+                .navigationDestination(isPresented: $showingAnalytics) {
+                    AnalyticsView()
                 }
                 .sheet(isPresented: $showingSettings) {
                     SettingsView()
@@ -122,6 +161,64 @@ struct WorkoutListView: View {
                 } message: {
                     Text("This can’t be undone.")
                 }
+                .alert(
+                    "Start from template",
+                    isPresented: Binding(
+                        get: { pendingTemplateStart != nil },
+                        set: { if !$0 { pendingTemplateStart = nil } }
+                    )
+                ) {
+                    Button("Add template to today’s workout") {
+                        guard let item = pendingTemplateStart, let target = todayTargetWorkout else { return }
+                        if viewModel.addTemplate(item.template, to: target) {
+                            selectedWorkout = target
+                            notices.showInfo("Template added to today’s workout.")
+                        }
+                        pendingTemplateStart = nil
+                    }
+                    Button("Create separate workout") {
+                        guard let item = pendingTemplateStart else { return }
+                        if let newWorkout = viewModel.addWorkout(from: item.template, date: today) {
+                            selectedWorkout = newWorkout
+                            notices.showInfo("Workout created from template.")
+                        }
+                        pendingTemplateStart = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingTemplateStart = nil
+                    }
+                } message: {
+                    Text("A workout already exists for today.")
+                }
+                .alert(
+                    "Duplicate workout",
+                    isPresented: Binding(
+                        get: { pendingDuplicateStart != nil },
+                        set: { if !$0 { pendingDuplicateStart = nil } }
+                    )
+                ) {
+                    Button("Add duplicate to today’s workout") {
+                        guard let item = pendingDuplicateStart, let target = todayTargetWorkout else { return }
+                        if viewModel.mergeWorkout(item.source, into: target) {
+                            selectedWorkout = target
+                            notices.showInfo("Workout duplicated into today.")
+                        }
+                        pendingDuplicateStart = nil
+                    }
+                    Button("Create separate workout") {
+                        guard let item = pendingDuplicateStart else { return }
+                        if let newWorkout = viewModel.duplicateWorkout(item.source, date: today) {
+                            selectedWorkout = newWorkout
+                            notices.showInfo("Workout duplicated.")
+                        }
+                        pendingDuplicateStart = nil
+                    }
+                    Button("Cancel", role: .cancel) {
+                        pendingDuplicateStart = nil
+                    }
+                } message: {
+                    Text("A workout already exists for today.")
+                }
 
                 ForgeFloatingButton(action: { showingAddWorkout = true }, accessibilityLabel: "Add workout")
                     .padding(.horizontal, ForgeTheme.gutter)
@@ -133,13 +230,11 @@ struct WorkoutListView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: ForgeTheme.spaceM) {
-            ForgeTypography.section(Date().formatted(date: .complete, time: .omitted))
-
-            Text(greetingTitle)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(ForgeTheme.primaryText)
-
             ForgeTypography.hero("Today's Workouts")
+
+            Text("\(greetingTitle) · \(Date().formatted(date: .complete, time: .omitted))")
+                .font(.subheadline)
+                .foregroundStyle(ForgeTheme.tertiaryText)
 
             if workoutsThisWeek > 0 {
                 HStack(spacing: ForgeTheme.spaceXS) {
@@ -203,6 +298,20 @@ struct WorkoutListView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(ForgeTheme.gold)
                 .foregroundStyle(.black)
+
+                Button {
+                    showingTemplates = true
+                } label: {
+                    HStack(spacing: ForgeTheme.spaceS) {
+                        Image(systemName: "square.stack.3d.up")
+                        Text("Templates")
+                    }
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, ForgeTheme.spaceM)
+                }
+                .buttonStyle(.bordered)
+                .tint(ForgeTheme.secondaryText)
             }
             .padding(ForgeTheme.cardPadding)
             .frame(maxWidth: 520)
@@ -217,18 +326,29 @@ struct WorkoutListView: View {
     private var workoutList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ForgeTheme.spaceXL) {
-                ForgeHeaderView(title: "Workouts", onOpenSettings: { showingSettings = true })
+                ForgeHeaderView(
+                    title: "Workouts",
+                    onOpenTemplates: { showingTemplates = true },
+                    onOpenSettings: { showingSettings = true }
+                )
                 if viewModel.isLoading && !viewModel.hasLoaded {
                     loadingDashboard
                 } else {
                     todayFocusSection
                     headerSection
+                    highlightsSection
                     summaryCardSection
+                    analyticsEntrySection
                 }
 
-                if !todayWorkouts.isEmpty {
-                    sectionHeader("Today")
-                    workoutCards(todayWorkouts)
+                if let active = todayActiveWorkout {
+                    sectionHeader("Active Workout")
+                    workoutCards([active])
+                }
+
+                if !todayCompletedWorkouts.isEmpty {
+                    sectionHeader("Completed Today")
+                    workoutCards(todayCompletedWorkouts)
                 }
 
                 if !previousWorkouts.isEmpty {
@@ -264,16 +384,46 @@ struct WorkoutListView: View {
 
     private var todayFocusSection: some View {
         let streak = viewModel.currentStreak()
-        let hasWorkout = todayWorkout != nil
-        let primaryTitle = isTodayDone ? "Workout done" : "Today"
-        let statusText = isTodayDone ? "Done" : (hasWorkout ? "Not done" : "Not started")
+        let mostRecentPrevious = previousWorkouts.first
         let message: String = {
             if streak >= 10 { return "Unstoppable 🔥" }
             if streak >= 5 { return "You're building momentum" }
             if streak >= 1 { return "Good start" }
             return "Start today's workout"
         }()
-        let ctaTitle = hasWorkout ? "Continue Workout" : "Start Workout"
+        let primaryTitle: String = {
+            if let active = todayActiveWorkout {
+                return active.exercises.isEmpty ? "Start workout" : "Continue workout"
+            }
+            if isTodayDone { return "Workout done" }
+            return "Today"
+        }()
+        let ctaTitle: String = {
+            if let active = todayActiveWorkout {
+                return active.exercises.isEmpty ? "Add your first exercise" : "Continue Workout"
+            }
+            return "Start Workout"
+        }()
+        let guidanceText: String = {
+            if let active = todayActiveWorkout {
+                return active.exercises.isEmpty
+                    ? "Add exercises to start your live session."
+                    : "Continue your active workout and finish when done."
+            }
+            if isTodayDone {
+                return "Today's workout is finished. Start another session if needed."
+            }
+            return message
+        }()
+        let sessionStatusText: String = {
+            if todayActiveWorkout != nil { return "Active" }
+            if isTodayDone { return "Done" }
+            return "Not started"
+        }()
+        let hasActiveWorkout = todayActiveWorkout != nil
+        let activeExerciseCount = todayActiveWorkout?.exercises.count ?? 0
+        let activeSets = todayActiveWorkout?.exercises.reduce(0) { $0 + $1.sets } ?? 0
+        let activeVolume = todayActiveWorkout?.exercises.reduce(0.0) { $0 + ($1.weight * Double($1.reps) * Double($1.sets)) } ?? 0
 
         return VStack(alignment: .leading, spacing: ForgeTheme.spaceM) {
             HStack(alignment: .firstTextBaseline) {
@@ -281,14 +431,14 @@ struct WorkoutListView: View {
                     Text(primaryTitle)
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(ForgeTheme.primaryText)
-                    Text(message)
+                    Text(guidanceText)
                         .font(.body)
                         .foregroundStyle(ForgeTheme.secondaryText)
                 }
                 Spacer(minLength: ForgeTheme.spaceM)
-                Text(statusText)
+                Text(sessionStatusText)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(isTodayDone ? ForgeTheme.gold : ForgeTheme.tertiaryText)
+                    .foregroundStyle(todayActiveWorkout != nil ? ForgeTheme.gold : ForgeTheme.tertiaryText)
                     .padding(.horizontal, ForgeTheme.spaceM)
                     .padding(.vertical, ForgeTheme.spaceS)
                     .background(Color(.secondarySystemGroupedBackground))
@@ -296,16 +446,14 @@ struct WorkoutListView: View {
             }
 
             Button {
-                if let w = todayWorkout {
-                    selectedWorkout = w
-                } else if let w = viewModel.addWorkout(date: today) {
+                if let w = viewModel.startOrContinueWorkoutForToday() {
                     selectedWorkout = w
                 } else {
                     showingAddWorkout = true
                 }
             } label: {
                 HStack(spacing: ForgeTheme.spaceS) {
-                    Image(systemName: hasWorkout ? "play.fill" : "plus")
+                    Image(systemName: hasActiveWorkout ? "play.fill" : "plus")
                     Text(ctaTitle)
                 }
                 .font(.headline.weight(.semibold))
@@ -315,13 +463,86 @@ struct WorkoutListView: View {
             .buttonStyle(.borderedProminent)
             .tint(ForgeTheme.gold)
             .foregroundStyle(.black)
-            .accessibilityLabel(hasWorkout ? "Continue today's workout" : "Start today's workout")
+            .accessibilityLabel(hasActiveWorkout ? "Continue today's workout" : "Start today's workout")
             .accessibilityHint("Opens today's workout")
+
+            if let _ = todayActiveWorkout, activeExerciseCount > 0 {
+                HStack(spacing: ForgeTheme.spaceM) {
+                    sessionStatPill(value: "\(activeExerciseCount)", label: "Exercises")
+                    sessionStatPill(value: "\(activeSets)", label: "Sets")
+                    sessionStatPill(value: formatVolumeCompact(activeVolume), label: "Volume")
+                }
+            }
+
+            if let active = todayActiveWorkout, !active.exercises.isEmpty {
+                Button {
+                    if viewModel.finishWorkout(active) {
+                        notices.showInfo("Workout finished.")
+                    }
+                } label: {
+                    HStack(spacing: ForgeTheme.spaceS) {
+                        Image(systemName: "checkmark.circle")
+                        Text("Finish Workout")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, ForgeTheme.spaceS)
+                }
+                .buttonStyle(.bordered)
+                .tint(ForgeTheme.secondaryText)
+            }
+
+            if let source = mostRecentPrevious {
+                Button {
+                    if todayTargetWorkout != nil {
+                        pendingDuplicateStart = WorkoutDuplicateItem(source: source)
+                    } else if let newWorkout = viewModel.duplicateWorkout(source, date: today) {
+                        selectedWorkout = newWorkout
+                        notices.showInfo("Workout duplicated.")
+                    }
+                } label: {
+                    HStack(spacing: ForgeTheme.spaceS) {
+                        Image(systemName: "doc.on.doc")
+                        Text("Duplicate Previous Workout")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, ForgeTheme.spaceS)
+                }
+                .buttonStyle(.bordered)
+                .tint(ForgeTheme.secondaryText)
+            }
+
+            if !todayCompletedWorkouts.isEmpty {
+                Text("Finished today: \(todayCompletedWorkouts.count) workout\(todayCompletedWorkouts.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+            }
         }
         .padding(ForgeTheme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .forgeCard()
         .padding(.horizontal, ForgeTheme.gutter)
+    }
+
+    private func sessionStatPill(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ForgeTheme.primaryText)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(ForgeTheme.tertiaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, ForgeTheme.spaceS)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadiusSmall, style: .continuous))
+    }
+
+    private func formatVolumeCompact(_ volume: Double) -> String {
+        if volume >= 1000 { return String(format: "%.1fk", volume / 1000) }
+        return "\(Int(volume))"
     }
 
     private var summaryCardSection: some View {
@@ -334,10 +555,41 @@ struct WorkoutListView: View {
             volumeValue: viewModel.volumeThisWeek(),
             currentStreak: viewModel.currentStreak(),
             longestStreak: viewModel.longestStreak(),
-            weekStats: viewModel.weeklyStats(),
-            weeklyWorkoutGoal: 3
+            weeklyWorkoutGoal: 3,
+            improvementHint: viewModel.improvementSummaryMessage()
         )
         .padding(.horizontal, ForgeTheme.gutter)
+    }
+
+    private var analyticsEntrySection: some View {
+        Button {
+            showingAnalytics = true
+        } label: {
+            HStack(spacing: ForgeTheme.spaceS) {
+                Image(systemName: "chart.xyaxis.line")
+                Text("View Full Analytics")
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(ForgeTheme.secondaryText)
+            .padding(ForgeTheme.cardPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, ForgeTheme.gutter)
+    }
+
+    @ViewBuilder
+    private var highlightsSection: some View {
+        let highlights = viewModel.recentHighlights()
+        if !highlights.isEmpty {
+            ForgeHighlightsCardView(highlights: highlights)
+                .padding(.horizontal, ForgeTheme.gutter)
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {

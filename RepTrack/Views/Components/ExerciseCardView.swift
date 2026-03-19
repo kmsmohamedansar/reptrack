@@ -17,6 +17,7 @@ struct ExerciseCardView: View {
     var onEdit: (() -> Void)?
     var onDelete: (() -> Void)?
     var onAutosaveError: ((String) -> Void)?
+    var prBadgeText: String?
 
     init(
         log: ExerciseLog,
@@ -24,7 +25,8 @@ struct ExerciseCardView: View {
         onUpdate: ((Double, Int, Int) -> Void)? = nil,
         onEdit: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
-        onAutosaveError: ((String) -> Void)? = nil
+        onAutosaveError: ((String) -> Void)? = nil,
+        prBadgeText: String? = nil
     ) {
         self.log = log
         self.previous = previous
@@ -32,6 +34,7 @@ struct ExerciseCardView: View {
         self.onEdit = onEdit
         self.onDelete = onDelete
         self.onAutosaveError = onAutosaveError
+        self.prBadgeText = prBadgeText
     }
 
     @State private var weightText: String = ""
@@ -65,6 +68,22 @@ struct ExerciseCardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            }
+
+            if let prBadgeText {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ForgeTheme.gold)
+                    Text(prBadgeText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ForgeTheme.primaryText)
+                }
+                .padding(.horizontal, ForgeTheme.spaceM)
+                .padding(.vertical, ForgeTheme.spaceS)
+                .background(ForgeTheme.gold.opacity(0.08))
+                .clipShape(Capsule())
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
 
             progressionBadge
@@ -232,9 +251,18 @@ struct ExerciseCardView: View {
                 .foregroundStyle(ForgeTheme.tertiaryText)
             TextField("0", text: text)
                 .keyboardType(field == .weight ? .decimalPad : .numberPad)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.center)
                 .focused($focusedField, equals: field)
                 .onSubmit { onSubmit() }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(ForgeTheme.cardLightBorder.opacity(0.35), lineWidth: 0.5)
+                )
         }
     }
 

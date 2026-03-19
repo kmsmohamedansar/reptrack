@@ -15,7 +15,7 @@ struct RepTrackApp: App {
     @StateObject private var notices = ForgeNoticeCenter()
 
     private let sharedModelContainer: ModelContainer? = {
-        let schema = Schema([Workout.self, ExerciseLog.self])
+        let schema = Schema([Workout.self, ExerciseLog.self, WorkoutTemplate.self, WorkoutTemplateExercise.self])
 
         do {
             let disk = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)

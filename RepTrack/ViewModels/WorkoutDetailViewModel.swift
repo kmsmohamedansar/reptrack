@@ -16,6 +16,7 @@ final class WorkoutDetailViewModel {
 
     /// All exercise logs for the same exercise name, across workouts, newest first (for comparison).
     var previousLogsByName: [String: [ExerciseLog]] = [:]
+    private var allLogsByName: [String: [ExerciseLog]] = [:]
 
     func setModelContext(_ context: ModelContext) {
         modelContext = context
@@ -40,12 +41,15 @@ final class WorkoutDetailViewModel {
             return
         }
 
-        var byName: [String: [ExerciseLog]] = [:]
+        var allByName: [String: [ExerciseLog]] = [:]
+        var previousByName: [String: [ExerciseLog]] = [:]
         for log in allLogs {
+            allByName[log.name, default: []].append(log)
             guard log.workout?.persistentModelID != workout.persistentModelID else { continue }
-            byName[log.name, default: []].append(log)
+            previousByName[log.name, default: []].append(log)
         }
-        previousLogsByName = byName
+        allLogsByName = allByName
+        previousLogsByName = previousByName
     }
 
     func addExercise(
@@ -56,7 +60,9 @@ final class WorkoutDetailViewModel {
         notes: String
     ) {
         guard let modelContext, let workout else { return }
+        let nextOrder = (workout.exercises.map(\.orderIndex).max() ?? -1) + 1
         let log = ExerciseLog(
+            orderIndex: nextOrder,
             name: name,
             weight: weight,
             reps: reps,
@@ -113,6 +119,141 @@ final class WorkoutDetailViewModel {
         loadPreviousLogsForComparison()
     }
 
+    @discardableResult
+    func saveWorkoutAsTemplate(_ workout: Workout, templateName: String) -> Bool {
+        guard let modelContext else { return false }
+        let trimmed = templateName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            onError?("Template name is required.")
+            return false
+        }
+        guard !workout.sortedExercises.isEmpty else {
+            onError?("Add at least one exercise before saving a template.")
+            return false
+        }
+
+        let template = WorkoutTemplate(name: trimmed)
+        modelContext.insert(template)
+
+        for (index, log) in workout.sortedExercises.enumerated() {
+            let item = WorkoutTemplateExercise(
+                orderIndex: index,
+                name: log.name,
+                defaultWeight: log.weight,
+                defaultReps: log.reps,
+                defaultSets: log.sets,
+                template: template
+            )
+            modelContext.insert(item)
+            template.exercises.append(item)
+        }
+
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            AppLog.persistence.error("Save workout as template failed: \(String(describing: error))")
+            onError?("Couldn’t save template. Please try again.")
+            return false
+        }
+    }
+
+    @discardableResult
+    func duplicateWorkout(_ source: Workout, date: Date = Date()) -> Workout? {
+        guard let modelContext else { return nil }
+        let workout = Workout(date: date)
+        modelContext.insert(workout)
+        copyExercises(from: source, to: workout, using: modelContext)
+        do {
+            try modelContext.save()
+            return workout
+        } catch {
+            AppLog.persistence.error("Duplicate workout failed: \(String(describing: error))")
+            onError?("Couldn’t duplicate workout. Please try again.")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func mergeWorkout(_ source: Workout, into target: Workout) -> Bool {
+        guard let modelContext else { return false }
+        copyExercises(from: source, to: target, using: modelContext)
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            AppLog.persistence.error("Merge workout failed: \(String(describing: error))")
+            onError?("Couldn’t merge workout. Please try again.")
+            return false
+        }
+    }
+
+    private func copyExercises(from source: Workout, to target: Workout, using modelContext: ModelContext) {
+        let start = (target.exercises.map(\.orderIndex).max() ?? -1) + 1
+        for (offset, log) in source.sortedExercises.enumerated() {
+            let cloned = ExerciseLog(
+                orderIndex: start + offset,
+                name: log.name,
+                weight: log.weight,
+                reps: log.reps,
+                sets: log.sets,
+                notes: log.notes,
+                workout: target
+            )
+            modelContext.insert(cloned)
+            target.exercises.append(cloned)
+        }
+    }
+
+    @discardableResult
+    func reorderExercises(in workout: Workout, from source: IndexSet, to destination: Int) -> Bool {
+        guard let modelContext else { return false }
+        var reordered = workout.sortedExercises
+        reordered.move(fromOffsets: source, toOffset: destination)
+        for (idx, log) in reordered.enumerated() {
+            log.orderIndex = idx
+        }
+        workout.exercises = reordered
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            AppLog.persistence.error("Reorder exercises save failed: \(String(describing: error))")
+            onError?("Couldn’t save exercise order. Please try again.")
+            return false
+        }
+    }
+
+    @discardableResult
+    func finishWorkout(_ workout: Workout) -> Bool {
+        guard let modelContext else { return false }
+        workout.isFinished = true
+        workout.finishedAt = Date()
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            AppLog.persistence.error("Finish workout (detail) save failed: \(String(describing: error))")
+            onError?("Couldn’t finish workout. Please try again.")
+            return false
+        }
+    }
+
+    @discardableResult
+    func reopenWorkout(_ workout: Workout) -> Bool {
+        guard let modelContext else { return false }
+        workout.isFinished = false
+        workout.finishedAt = nil
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            AppLog.persistence.error("Reopen workout (detail) save failed: \(String(describing: error))")
+            onError?("Couldn’t continue workout. Please try again.")
+            return false
+        }
+    }
+
     // MARK: - Workout performance (for detail analytics)
 
     func totalSets(for workout: Workout) -> Int {
@@ -166,6 +307,82 @@ final class WorkoutDetailViewModel {
         enum Tone {
             case neutral
             case positive
+        }
+    }
+
+    struct ExerciseInsight: Identifiable {
+        let id = UUID()
+        let exerciseName: String
+        let message: String
+    }
+
+    struct ExercisePRSummary: Identifiable {
+        let id = UUID()
+        let exerciseName: String
+        let prTypes: [PRType]
+
+        enum PRType: String {
+            case weight = "Highest weight"
+            case reps = "Highest reps"
+            case volume = "Highest volume"
+        }
+    }
+
+    func prsAchieved(in workout: Workout) -> [ExercisePRSummary] {
+        workout.sortedExercises.compactMap { log in
+            let types = prTypesAchieved(for: log)
+            guard !types.isEmpty else { return nil }
+            return ExercisePRSummary(exerciseName: log.name, prTypes: types)
+        }
+    }
+
+    func prTypesAchieved(for log: ExerciseLog) -> [ExercisePRSummary.PRType] {
+        guard let logs = allLogsByName[log.name], !logs.isEmpty else { return [] }
+        let baseline = logs.filter { $0.persistentModelID != log.persistentModelID }
+
+        func maxWeight(in logs: [ExerciseLog]) -> Double { logs.map(\.weight).max() ?? 0 }
+        func maxReps(in logs: [ExerciseLog]) -> Int { logs.map(\.reps).max() ?? 0 }
+        func maxVolume(in logs: [ExerciseLog]) -> Double {
+            logs.map { $0.weight * Double($0.reps) * Double($0.sets) }.max() ?? 0
+        }
+
+        let baselineWeight = maxWeight(in: baseline)
+        let baselineReps = maxReps(in: baseline)
+        let baselineVolume = maxVolume(in: baseline)
+
+        var achieved: [ExercisePRSummary.PRType] = []
+        if !baseline.isEmpty, log.weight > baselineWeight { achieved.append(.weight) }
+        if !baseline.isEmpty, log.reps > baselineReps { achieved.append(.reps) }
+        if !baseline.isEmpty, (log.weight * Double(log.reps) * Double(log.sets)) > baselineVolume { achieved.append(.volume) }
+        return achieved
+    }
+
+    func exerciseInsights(for workout: Workout) -> [ExerciseInsight] {
+        workout.sortedExercises.compactMap { log in
+            guard let previous = previousLog(forExerciseName: log.name) else { return nil }
+
+            let currentVolume = log.weight * Double(log.reps) * Double(log.sets)
+            let previousVolume = previous.weight * Double(previous.reps) * Double(previous.sets)
+
+            if currentVolume > previousVolume {
+                return ExerciseInsight(
+                    exerciseName: log.name,
+                    message: "Higher volume than last time"
+                )
+            }
+            if log.reps > previous.reps {
+                return ExerciseInsight(
+                    exerciseName: log.name,
+                    message: "More reps than previous workout"
+                )
+            }
+            if log.weight > previous.weight {
+                return ExerciseInsight(
+                    exerciseName: log.name,
+                    message: "Up from last session"
+                )
+            }
+            return nil
         }
     }
 

@@ -16,10 +16,8 @@ struct ForgeSummaryCardView: View {
     let volumeValue: Double
     let currentStreak: Int
     let longestStreak: Int
-    let weekStats: [WorkoutsViewModel.WeekStat]
     let weeklyWorkoutGoal: Int
-
-    @State private var showMore = false
+    let improvementHint: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: ForgeTheme.spaceM) {
@@ -34,33 +32,33 @@ struct ForgeSummaryCardView: View {
                 embedded: true
             )
 
+            if workoutsValue == 0 && setsValue == 0 {
+                VStack(alignment: .leading, spacing: ForgeTheme.spaceXS) {
+                    Text("Start your first workout to see progress")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(ForgeTheme.secondaryText)
+                    Text("Your weekly stats will appear here")
+                        .font(.caption)
+                        .foregroundStyle(ForgeTheme.tertiaryText)
+                }
+            }
+
             Divider()
                 .overlay(ForgeTheme.cardLightBorder)
 
             weeklyGoalRow
 
+            if let improvementHint {
+                Text(improvementHint)
+                    .font(.caption)
+                    .foregroundStyle(ForgeTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Divider()
                 .overlay(ForgeTheme.cardLightBorder)
 
             ForgeStreakView(currentStreak: currentStreak, longestStreak: longestStreak, embedded: true)
-
-            // Secondary: collapsible analytics (still inside same card)
-            if !weekStats.isEmpty {
-                Divider()
-                    .overlay(ForgeTheme.cardLightBorder)
-
-                DisclosureGroup(isExpanded: $showMore) {
-                    ForgeAnalyticsCard(weekStats: weekStats, embedded: true)
-                        .padding(.top, ForgeTheme.spaceS)
-                } label: {
-                    HStack {
-                        ForgeTypography.section("More analytics")
-                        Spacer()
-                        ForgeTypography.caption(showMore ? "Hide" : "Show")
-                    }
-                }
-                .tint(ForgeTheme.secondaryText)
-            }
         }
         .padding(ForgeTheme.cardPadding)
         .forgeCard()
@@ -103,8 +101,8 @@ struct ForgeSummaryCardView: View {
             volumeValue: 12500,
             currentStreak: 5,
             longestStreak: 12,
-            weekStats: [],
-            weeklyWorkoutGoal: 3
+            weeklyWorkoutGoal: 3,
+            improvementHint: "2 exercises are up from last session"
         )
         .padding()
     }

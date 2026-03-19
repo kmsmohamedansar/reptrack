@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ForgeHeaderView: View {
     let title: String
+    var onOpenTemplates: (() -> Void)? = nil
     var onOpenSettings: (() -> Void)? = nil
 
     var body: some View {
@@ -42,14 +43,27 @@ struct ForgeHeaderView: View {
 
     @ViewBuilder
     private var trailingIcon: some View {
-        if let onOpenSettings {
-            Button(action: onOpenSettings) {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(ForgeTheme.gold)
+        if onOpenTemplates != nil || onOpenSettings != nil {
+            HStack(spacing: ForgeTheme.spaceM) {
+                if let onOpenTemplates {
+                    Button(action: onOpenTemplates) {
+                        Image(systemName: "square.stack.3d.up.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(ForgeTheme.gold)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Templates")
+                }
+                if let onOpenSettings {
+                    Button(action: onOpenSettings) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(ForgeTheme.gold)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Settings")
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
         } else {
             Image(systemName: "sparkles")
                 .font(.system(size: 22, weight: .medium))

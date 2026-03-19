@@ -8,6 +8,7 @@ import SwiftData
 
 @Model
 final class ExerciseLog {
+    var orderIndex: Int
     var name: String
     var weight: Double
     var reps: Int
@@ -17,6 +18,7 @@ final class ExerciseLog {
     var workout: Workout?
 
     init(
+        orderIndex: Int = 0,
         name: String,
         weight: Double,
         reps: Int,
@@ -24,6 +26,7 @@ final class ExerciseLog {
         notes: String = "",
         workout: Workout? = nil
     ) {
+        self.orderIndex = orderIndex
         self.name = name
         self.weight = weight
         self.reps = reps

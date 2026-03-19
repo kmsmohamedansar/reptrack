@@ -18,6 +18,10 @@ struct WorkoutCardView: View {
         workout.exercises.reduce(0) { $0 + ($1.weight * Double($1.reps) * Double($1.sets)) }
     }
 
+    private var statusText: String {
+        workout.isFinished ? "Finished" : "Active"
+    }
+
     var body: some View {
         HStack(spacing: ForgeTheme.spaceM) {
             iconBadge
@@ -54,6 +58,13 @@ struct WorkoutCardView: View {
             Text(workout.date.formatted(date: .abbreviated, time: .omitted))
                 .font(.headline)
                 .foregroundStyle(ForgeTheme.primaryText)
+            Text(statusText)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(workout.isFinished ? ForgeTheme.tertiaryText : ForgeTheme.gold)
+                .padding(.horizontal, ForgeTheme.spaceS)
+                .padding(.vertical, 2)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(Capsule())
             Text("\(workout.exercises.count) exercise\(workout.exercises.count == 1 ? "" : "s")")
                 .font(.body)
                 .foregroundStyle(ForgeTheme.secondaryText)
@@ -83,6 +94,7 @@ struct WorkoutCardView: View {
     private var accessibilitySummary: String {
         var parts: [String] = []
         parts.append("Workout on \(workout.date.formatted(date: .complete, time: .omitted))")
+        parts.append(workout.isFinished ? "finished" : "active")
         parts.append("\(workout.exercises.count) exercise\(workout.exercises.count == 1 ? "" : "s")")
         if totalSets > 0 { parts.append("\(totalSets) sets") }
         if estimatedVolume > 0 { parts.append("volume \(formatVolume(estimatedVolume))") }

@@ -52,9 +52,16 @@ struct AddExerciseView: View {
                 VStack(alignment: .leading, spacing: ForgeTheme.spaceL) {
                     searchSection
                     pickerSection
+                    if !canSave {
+                        Text("Select an exercise to continue")
+                            .font(.caption)
+                            .foregroundStyle(ForgeTheme.tertiaryText)
+                            .transition(.opacity)
+                    }
                     detailsSection
                     notesSection
                 }
+                .animation(.easeInOut(duration: 0.25), value: canSave)
                 .padding(ForgeTheme.gutter)
             }
             .background(ForgeTheme.backgroundGradient.ignoresSafeArea())
@@ -83,6 +90,7 @@ struct AddExerciseView: View {
                     }
                     .fontWeight(.semibold)
                     .disabled(!canSave)
+                    .animation(.easeInOut(duration: 0.25), value: canSave)
                 }
             }
         }

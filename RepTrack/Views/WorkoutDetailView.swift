@@ -24,25 +24,44 @@ private struct WeightPoint: Identifiable {
     let weight: Double
 }
 
+private struct DetailDuplicateItem: Identifiable {
+    let source: Workout
+    var id: PersistentIdentifier { source.persistentModelID }
+}
+
 struct WorkoutDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var notices: ForgeNoticeCenter
+    @Query(sort: [SortDescriptor(\Workout.date, order: .reverse)])
+    private var allWorkouts: [Workout]
     @Bindable var workout: Workout
     @State private var viewModel = WorkoutDetailViewModel()
     @State private var showingAddExercise = false
+    @State private var showingSaveTemplate = false
     @State private var exerciseToEdit: ExerciseLogSheetItem?
     @State private var exerciseToDelete: ExerciseLogDeleteItem?
+    @State private var pendingDuplicate: DetailDuplicateItem?
+    @State private var duplicatedWorkout: Workout?
+    @State private var showFinishConfirm = false
+    @State private var showingReorderExercises = false
+    @State private var workoutNotes: String = ""
+    @State private var notesSaveTask: Task<Void, Never>?
+    @State private var isSyncingWorkoutNotes = false
+    @State private var isEditingWorkoutNotes = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 LazyVStack(spacing: ForgeTheme.spaceM) {
                     workoutPerformanceSection
+                    workoutNotesSection
                     if workout.sortedExercises.isEmpty {
                         emptyExercisesCard
                     }
                     ForEach(workout.sortedExercises, id: \.persistentModelID) { log in
+                        let prTypes = viewModel.prTypesAchieved(for: log)
+                        let prBadgeText = prTypes.isEmpty ? nil : "New PR"
                         ExerciseCardView(
                             log: log,
                             progression: viewModel.previousLog(forExerciseName: log.name),
@@ -57,7 +76,8 @@ struct WorkoutDetailView: View {
                             },
                             onAutosaveError: { message in
                                 notices.showError(message)
-                            }
+                            },
+                            prBadgeText: prBadgeText
                         )
                     }
                 }
@@ -71,9 +91,16 @@ struct WorkoutDetailView: View {
             .onAppear {
                 viewModel.setModelContext(modelContext)
                 viewModel.setWorkout(workout)
+                syncNotesFromModel()
                 viewModel.onError = { message in
                     notices.showError(message)
                 }
+            }
+            .onChange(of: workout.notes) { _, _ in
+                syncNotesFromModel()
+            }
+            .onChange(of: workoutNotes) { _, _ in
+                autosaveWorkoutNotes()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .inactive || newPhase == .background {
@@ -86,6 +113,44 @@ struct WorkoutDetailView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingSaveTemplate = true
+                        } label: {
+                            Label("Save as Template", systemImage: "square.on.square")
+                        }
+                        Button {
+                            startDuplicateFlow(from: workout)
+                        } label: {
+                            Label("Duplicate Workout", systemImage: "doc.on.doc")
+                        }
+                        if workout.sortedExercises.count > 1 {
+                            Button {
+                                showingReorderExercises = true
+                            } label: {
+                                Label("Reorder Exercises", systemImage: "line.3.horizontal")
+                            }
+                        }
+                        if workout.isFinished {
+                            Button {
+                                if viewModel.reopenWorkout(workout) {
+                                    notices.showInfo("Workout is active again.")
+                                }
+                            } label: {
+                                Label("Continue Workout", systemImage: "play.fill")
+                            }
+                        } else {
+                            Button {
+                                showFinishConfirm = true
+                            } label: {
+                                Label("Finish Workout", systemImage: "checkmark.circle")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
@@ -110,6 +175,56 @@ struct WorkoutDetailView: View {
                     exerciseToEdit = nil
                 }
             }
+            .sheet(isPresented: $showingSaveTemplate) {
+                SaveWorkoutTemplateView(defaultName: defaultTemplateName) { name in
+                    if viewModel.saveWorkoutAsTemplate(workout, templateName: name) {
+                        notices.showInfo("Template saved.")
+                    }
+                    showingSaveTemplate = false
+                } onCancel: {
+                    showingSaveTemplate = false
+                }
+            }
+            .sheet(isPresented: $showingReorderExercises) {
+                NavigationStack {
+                    List {
+                        ForEach(workout.sortedExercises, id: \.persistentModelID) { log in
+                            HStack(spacing: ForgeTheme.spaceS) {
+                                Image(systemName: "line.3.horizontal")
+                                    .foregroundStyle(ForgeTheme.tertiaryText)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(log.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(ForgeTheme.primaryText)
+                                    Text("\(log.sets)x\(log.reps) · \(Int(log.weight)) lb")
+                                        .font(.caption)
+                                        .foregroundStyle(ForgeTheme.secondaryText)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .onMove { indices, newOffset in
+                            if viewModel.reorderExercises(in: workout, from: indices, to: newOffset) {
+                                notices.showInfo("Exercise order updated.")
+                            }
+                        }
+                    }
+                    .environment(\.editMode, .constant(.active))
+                    .scrollContentBackground(.hidden)
+                    .background(ForgeTheme.backgroundGradient.ignoresSafeArea())
+                    .navigationTitle("Reorder Exercises")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showingReorderExercises = false }
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+            }
+            .navigationDestination(item: $duplicatedWorkout) { duplicated in
+                WorkoutDetailView(workout: duplicated)
+            }
             .alert("Delete exercise?", isPresented: Binding(
                 get: { exerciseToDelete != nil },
                 set: { if !$0 { exerciseToDelete = nil } }
@@ -126,6 +241,47 @@ struct WorkoutDetailView: View {
             } message: {
                 Text("This can’t be undone.")
             }
+            .alert("Finish workout?", isPresented: $showFinishConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Finish", role: .destructive) {
+                    if viewModel.finishWorkout(workout) {
+                        notices.showInfo("Workout finished.")
+                    }
+                }
+            } message: {
+                Text("You can still reopen it later from the menu.")
+            }
+            .alert(
+                "Duplicate workout",
+                isPresented: Binding(
+                    get: { pendingDuplicate != nil },
+                    set: { if !$0 { pendingDuplicate = nil } }
+                )
+            ) {
+                Button("Add duplicate to today’s workout") {
+                    guard let item = pendingDuplicate, let today = todayWorkout else { return }
+                    if viewModel.mergeWorkout(item.source, into: today) {
+                        notices.showInfo("Workout duplicated into today.")
+                        if today.persistentModelID != workout.persistentModelID {
+                            duplicatedWorkout = today
+                        }
+                    }
+                    pendingDuplicate = nil
+                }
+                Button("Create separate workout") {
+                    guard let item = pendingDuplicate else { return }
+                    if let duplicated = viewModel.duplicateWorkout(item.source, date: startOfToday) {
+                        duplicatedWorkout = duplicated
+                        notices.showInfo("Workout duplicated.")
+                    }
+                    pendingDuplicate = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingDuplicate = nil
+                }
+            } message: {
+                Text("A workout already exists for today.")
+            }
 
             ForgeFloatingButton(
                 action: { showingAddExercise = true },
@@ -134,6 +290,10 @@ struct WorkoutDetailView: View {
             )
                 .padding(.horizontal, ForgeTheme.gutter)
                 .padding(.bottom, ForgeTheme.gutter)
+        }
+        .onDisappear {
+            notesSaveTask?.cancel()
+            saveWorkoutNotes()
         }
     }
 
@@ -179,6 +339,19 @@ struct WorkoutDetailView: View {
         VStack(alignment: .leading, spacing: ForgeTheme.spaceM) {
             ForgeTypography.section("Workout Performance")
 
+            HStack(spacing: ForgeTheme.spaceS) {
+                Image(systemName: workout.isFinished ? "checkmark.circle.fill" : "play.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(workout.isFinished ? ForgeTheme.tertiaryText : ForgeTheme.gold)
+                Text(workout.isFinished ? "Finished workout" : "Active workout")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(workout.isFinished ? ForgeTheme.tertiaryText : ForgeTheme.secondaryText)
+            }
+            .padding(.horizontal, ForgeTheme.spaceM)
+            .padding(.vertical, ForgeTheme.spaceS)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(Capsule())
+
             if let insight = viewModel.progressInsight(for: workout) {
                 HStack(alignment: .top, spacing: ForgeTheme.spaceS) {
                     Image(systemName: insight.systemImage)
@@ -211,6 +384,43 @@ struct WorkoutDetailView: View {
                 statPill(value: "\(viewModel.totalReps(for: workout))", label: "Reps")
                 statPill(value: formatVolume(viewModel.totalVolume(for: workout)), label: "Volume")
                 statPill(value: "~\(viewModel.estimatedCalories(for: workout))", label: "Cal")
+            }
+
+            let exerciseInsights = viewModel.exerciseInsights(for: workout)
+            if !exerciseInsights.isEmpty {
+                VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
+                    ForEach(exerciseInsights.prefix(3)) { insight in
+                        HStack(alignment: .firstTextBaseline, spacing: ForgeTheme.spaceS) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(ForgeTheme.gold)
+                            Text("\(insight.exerciseName): \(insight.message)")
+                                .font(.caption)
+                                .foregroundStyle(ForgeTheme.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .padding(ForgeTheme.spaceM)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadiusSmall, style: .continuous))
+            }
+
+            let prs = viewModel.prsAchieved(in: workout)
+            if !prs.isEmpty {
+                VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
+                    ForgeTypography.section("Personal records")
+                    ForEach(prs.prefix(4)) { pr in
+                        Text("• \(pr.exerciseName): \(pr.prTypes.map(\.rawValue).joined(separator: \", \"))")
+                            .font(.caption)
+                            .foregroundStyle(ForgeTheme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(ForgeTheme.spaceM)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadiusSmall, style: .continuous))
             }
 
             let progression = viewModel.weightProgression(for: workout)
@@ -267,9 +477,136 @@ struct WorkoutDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var workoutNotesSection: some View {
+        let trimmedNotes = workoutNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasNotes = !trimmedNotes.isEmpty
+
+        VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
+            HStack {
+                ForgeTypography.section("Notes")
+                Spacer(minLength: 0)
+                if hasNotes && !isEditingWorkoutNotes {
+                    Button {
+                        isEditingWorkoutNotes = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(ForgeTheme.secondaryText)
+                }
+            }
+
+            if isEditingWorkoutNotes || !hasNotes {
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $workoutNotes)
+                        .font(.body)
+                        .foregroundStyle(ForgeTheme.primaryText)
+                        .frame(minHeight: 96)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
+                        .textInputAutocapitalization(.sentences)
+
+                    if trimmedNotes.isEmpty {
+                        Text("Add a note about this session")
+                            .font(.body)
+                            .foregroundStyle(ForgeTheme.tertiaryText)
+                            .padding(.top, 8)
+                            .padding(.leading, 6)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(ForgeTheme.spaceS)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadiusSmall, style: .continuous))
+
+                if hasNotes {
+                    HStack {
+                        Spacer(minLength: 0)
+                        Button("Done") {
+                            saveWorkoutNotes()
+                            isEditingWorkoutNotes = false
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(ForgeTheme.secondaryText)
+                    }
+                }
+            } else {
+                Button {
+                    isEditingWorkoutNotes = true
+                } label: {
+                    Text(trimmedNotes)
+                        .font(.body)
+                        .foregroundStyle(ForgeTheme.primaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(ForgeTheme.spaceM)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: RepTrackDesign.cornerRadiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(ForgeTheme.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .forgeCard()
+    }
+
+    private func syncNotesFromModel() {
+        guard workoutNotes != workout.notes else { return }
+        isSyncingWorkoutNotes = true
+        workoutNotes = workout.notes
+        DispatchQueue.main.async {
+            isSyncingWorkoutNotes = false
+        }
+    }
+
+    private func autosaveWorkoutNotes() {
+        guard !isSyncingWorkoutNotes else { return }
+        notesSaveTask?.cancel()
+        notesSaveTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 350_000_000)
+            } catch {
+                return
+            }
+            saveWorkoutNotes()
+        }
+    }
+
+    @MainActor
+    private func saveWorkoutNotes() {
+        workout.notes = workoutNotes
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.persistence.error("Save workout notes failed: \(String(describing: error))")
+            notices.showError("Couldn’t save notes. Please try again.")
+        }
+    }
+
     private func formatVolume(_ v: Double) -> String {
         if v >= 1000 { return String(format: "%.1fk", v / 1000) }
         return "\(Int(v))"
+    }
+
+    private var defaultTemplateName: String {
+        let weekday = workout.date.formatted(.dateTime.weekday(.wide))
+        return "\(weekday) Template"
+    }
+
+    private var calendar: Calendar { Calendar.current }
+    private var startOfToday: Date { calendar.startOfDay(for: Date()) }
+    private var todayWorkout: Workout? {
+        allWorkouts.first { calendar.isDate($0.date, inSameDayAs: startOfToday) }
+    }
+
+    private func startDuplicateFlow(from source: Workout) {
+        if todayWorkout != nil {
+            pendingDuplicate = DetailDuplicateItem(source: source)
+        } else if let duplicated = viewModel.duplicateWorkout(source, date: startOfToday) {
+            duplicatedWorkout = duplicated
+            notices.showInfo("Workout duplicated.")
+        }
     }
 }
 

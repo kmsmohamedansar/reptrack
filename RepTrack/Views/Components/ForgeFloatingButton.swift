@@ -10,21 +10,23 @@ struct ForgeFloatingButton: View {
     var accessibilityLabel: String = "Add workout"
     var accessibilityHint: String = "Opens the add workout screen"
 
+    private let size: CGFloat = 48
+    private let iconSize: CGFloat = 20
+
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(ForgeTheme.goldGradient)
-                    .frame(width: 56, height: 56)
+                    .fill(ForgeTheme.goldGradient.opacity(0.92))
+                    .frame(width: size, height: size)
                 Circle()
-                    .stroke(ForgeTheme.gold.opacity(0.5), lineWidth: 1)
-                    .frame(width: 56, height: 56)
+                    .stroke(ForgeTheme.gold.opacity(0.35), lineWidth: 1)
+                    .frame(width: size, height: size)
                 Image(systemName: "plus")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: iconSize, weight: .semibold))
                     .foregroundStyle(ForgeTheme.buttonIconDark)
             }
-            // One layer of depth (primary action only)
-            .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+            .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(ForgeFloatingButtonStyle())
         .accessibilityLabel(accessibilityLabel)

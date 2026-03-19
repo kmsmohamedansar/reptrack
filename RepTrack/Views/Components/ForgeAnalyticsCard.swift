@@ -13,6 +13,22 @@ struct ForgeAnalyticsCard: View {
     var embedded: Bool = false
 
     @State private var appeared = false
+    @State private var selectedMetric: Metric = .workouts
+
+    private enum Metric: String, CaseIterable, Identifiable {
+        case workouts = "Workouts"
+        case sets = "Sets"
+        case volume = "Volume"
+
+        var id: String { rawValue }
+        var summary: String {
+            switch self {
+            case .workouts: return "How many workouts you completed each week."
+            case .sets: return "Total sets completed each week."
+            case .volume: return "Total lifted volume each week."
+            }
+        }
+    }
 
     var body: some View {
         let content = VStack(alignment: .leading, spacing: ForgeTheme.spaceM) {
@@ -50,59 +66,123 @@ struct ForgeAnalyticsCard: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: ForgeTheme.spaceL) {
-            Chart(weekStats) { stat in
-                BarMark(
-                    x: .value("Week", stat.weekStart, unit: .weekOfYear),
-                    y: .value("Workouts", stat.workoutCount)
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [ForgeTheme.gold.opacity(0.6), ForgeTheme.gold],
-                        startPoint: .bottom,
-                        endPoint: .top
-                    )
-                )
-                .cornerRadius(4)
-            }
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .weekOfYear)) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated))
-                        .foregroundStyle(ForgeTheme.tertiaryText)
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(ForgeTheme.gold.opacity(0.15))
+            Picker("Metric", selection: $selectedMetric) {
+                ForEach(Metric.allCases) { metric in
+                    Text(metric.rawValue).tag(metric)
                 }
             }
-            .chartYAxis {
-                AxisMarks(position: .leading) { _ in
-                    AxisValueLabel()
-                        .foregroundStyle(ForgeTheme.tertiaryText)
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(ForgeTheme.gold.opacity(0.15))
-                }
-            }
-            .frame(height: 140)
+            .pickerStyle(.segmented)
 
-            HStack(spacing: ForgeTheme.spaceL) {
-                legendItem(title: "Volume", value: formatTotalVolume(weekStats))
-                legendItem(title: "Sets", value: "\(weekStats.reduce(0) { $0 + $1.totalSets })")
+            Text(selectedMetric.summary)
+                .font(.caption)
+                .foregroundStyle(ForgeTheme.tertiaryText)
+
+            Group {
+                switch selectedMetric {
+                case .workouts:
+                    workoutsChart
+                case .sets:
+                    setsChart
+                case .volume:
+                    volumeChart
+                }
             }
-            .font(.caption)
-            .foregroundStyle(ForgeTheme.secondaryText)
         }
     }
 
-    private func legendItem(title: String, value: String) -> some View {
-        HStack(spacing: ForgeTheme.spaceXS) {
-            Circle()
-                .fill(ForgeTheme.gold.opacity(0.6))
-                .frame(width: 6, height: 6)
-            Text("\(title): \(value)")
+    private var workoutsChart: some View {
+        Chart(weekStats) { stat in
+            BarMark(
+                x: .value("Week", stat.weekStart, unit: .weekOfYear),
+                y: .value("Workouts", stat.workoutCount)
+            )
+            .foregroundStyle(ForgeTheme.gold.opacity(0.85))
+            .cornerRadius(4)
         }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                AxisValueLabel(format: .dateTime.month(.abbreviated))
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisValueLabel()
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(ForgeTheme.gold.opacity(0.12))
+            }
+        }
+        .frame(height: 150)
     }
 
-    private func formatTotalVolume(_ stats: [WorkoutsViewModel.WeekStat]) -> String {
-        let total = stats.reduce(0.0) { $0 + $1.totalVolume }
-        if total >= 1000 { return String(format: "%.1fk lb", total / 1000) }
-        return "\(Int(total)) lb"
+    private var setsChart: some View {
+        Chart(weekStats) { stat in
+            LineMark(
+                x: .value("Week", stat.weekStart, unit: .weekOfYear),
+                y: .value("Sets", stat.totalSets)
+            )
+            .foregroundStyle(ForgeTheme.gold)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+
+            PointMark(
+                x: .value("Week", stat.weekStart, unit: .weekOfYear),
+                y: .value("Sets", stat.totalSets)
+            )
+            .foregroundStyle(ForgeTheme.gold)
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                AxisValueLabel(format: .dateTime.month(.abbreviated))
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisValueLabel()
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(ForgeTheme.gold.opacity(0.12))
+            }
+        }
+        .frame(height: 150)
+    }
+
+    private var volumeChart: some View {
+        Chart(weekStats) { stat in
+            LineMark(
+                x: .value("Week", stat.weekStart, unit: .weekOfYear),
+                y: .value("Volume", stat.totalVolume)
+            )
+            .foregroundStyle(ForgeTheme.gold)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+
+            AreaMark(
+                x: .value("Week", stat.weekStart, unit: .weekOfYear),
+                y: .value("Volume", stat.totalVolume)
+            )
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [ForgeTheme.gold.opacity(0.18), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .weekOfYear)) { _ in
+                AxisValueLabel(format: .dateTime.month(.abbreviated))
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisValueLabel()
+                    .foregroundStyle(ForgeTheme.tertiaryText)
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(ForgeTheme.gold.opacity(0.12))
+            }
+        }
+        .frame(height: 150)
     }
 }

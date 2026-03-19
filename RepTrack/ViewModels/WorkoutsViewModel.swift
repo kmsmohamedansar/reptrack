@@ -66,6 +66,209 @@ final class WorkoutsViewModel {
     func maxSetsPerWeek() -> Int { max(setsThisWeek(), 20) }
     func maxVolumePerWeek() -> Double { max(volumeThisWeek(), 5000) }
 
+    /// Lightweight motivational summary across latest exercise logs.
+    func improvementSummaryMessage() -> String? {
+        var latestByName: [String: [ExerciseLog]] = [:]
+        for workout in workouts {
+            for log in workout.exercises {
+                latestByName[log.name, default: []].append(log)
+            }
+        }
+
+        var improvingCount = 0
+        for logs in latestByName.values {
+            let sorted = logs.sorted { $0.createdAt > $1.createdAt }
+            guard sorted.count >= 2 else { continue }
+            let current = sorted[0]
+            let previous = sorted[1]
+            let currentVolume = current.weight * Double(current.reps) * Double(current.sets)
+            let previousVolume = previous.weight * Double(previous.reps) * Double(previous.sets)
+            if currentVolume > previousVolume || current.reps > previous.reps || current.weight > previous.weight {
+                improvingCount += 1
+            }
+        }
+
+        guard improvingCount > 0 else { return nil }
+        if improvingCount == 1 { return "1 exercise is up from last session" }
+        return "\(improvingCount) exercises are up from last session"
+    }
+
+    struct Highlight: Identifiable {
+        let id = UUID()
+        let title: String
+        let systemImage: String
+    }
+
+    struct ProgressTrend: Identifiable {
+        let id = UUID()
+        let message: String
+        let systemImage: String
+        let isPositive: Bool
+    }
+
+    struct ExerciseTrendPoint: Identifiable {
+        let id = UUID()
+        let date: Date
+        let weight: Double
+        let reps: Int
+        let volume: Double
+    }
+
+    func recentHighlights(maxCount: Int = 3) -> [Highlight] {
+        var highlights: [Highlight] = []
+        let cap = max(1, maxCount)
+
+        // Highlight: workouts completed this week.
+        let weeklyCount = workoutsThisWeek()
+        if weeklyCount >= 1 {
+            highlights.append(
+                Highlight(
+                    title: "\(weeklyCount) workout\(weeklyCount == 1 ? "" : "s") completed this week",
+                    systemImage: "flame.fill"
+                )
+            )
+        }
+
+        // Highlight: best volume this week (if we have 2+ workouts to compare).
+        if let week = calendar.dateInterval(of: .weekOfYear, for: Date()) {
+            let weekWorkouts = workouts.filter { $0.date >= week.start && $0.date < week.end }
+            if weekWorkouts.count >= 2 {
+                func workoutVolume(_ w: Workout) -> Double {
+                    w.exercises.reduce(0) { $0 + ($1.weight * Double($1.reps) * Double($1.sets)) }
+                }
+                if let best = weekWorkouts.max(by: { workoutVolume($0) < workoutVolume($1) }),
+                   let mostRecent = weekWorkouts.sorted(by: { $0.date > $1.date }).first,
+                   best.persistentModelID == mostRecent.persistentModelID {
+                    highlights.append(
+                        Highlight(
+                            title: "Best volume this week",
+                            systemImage: "crown.fill"
+                        )
+                    )
+                }
+            }
+        }
+
+        // Highlight: New PR in most recent workout (simple, meaningful).
+        if let mostRecentWorkout = workouts.sorted(by: { $0.date > $1.date }).first {
+            let allLogs = workouts.flatMap(\.exercises)
+            var byName: [String: [ExerciseLog]] = [:]
+            for log in allLogs { byName[log.name, default: []].append(log) }
+
+            func isNewPR(_ log: ExerciseLog) -> Bool {
+                guard let logs = byName[log.name] else { return false }
+                let baseline = logs.filter { $0.persistentModelID != log.persistentModelID }
+                guard !baseline.isEmpty else { return false }
+
+                let baselineWeight = baseline.map(\.weight).max() ?? 0
+                let baselineReps = baseline.map(\.reps).max() ?? 0
+                let baselineVolume = baseline.map { $0.weight * Double($0.reps) * Double($0.sets) }.max() ?? 0
+                let volume = log.weight * Double(log.reps) * Double(log.sets)
+                return log.weight > baselineWeight || log.reps > baselineReps || volume > baselineVolume
+            }
+
+            if let prLog = mostRecentWorkout.sortedExercises.first(where: isNewPR) {
+                highlights.append(
+                    Highlight(
+                        title: "New PR on \(prLog.name)",
+                        systemImage: "sparkles"
+                    )
+                )
+            }
+        }
+
+        // Keep output compact and stable.
+        return Array(highlights.prefix(cap))
+    }
+
+    func recentProgressTrends(maxCount: Int = 3) -> [ProgressTrend] {
+        let stats = weeklyStats(weeks: 3)
+        guard stats.count >= 2 else { return [] }
+
+        let latest = stats[stats.count - 1]
+        let previous = stats[stats.count - 2]
+        var trends: [ProgressTrend] = []
+
+        let workoutsDelta = latest.workoutCount - previous.workoutCount
+        if workoutsDelta > 0 {
+            trends.append(.init(
+                message: "\(workoutsDelta) more workout\(workoutsDelta == 1 ? "" : "s") than last week",
+                systemImage: "arrow.up.right",
+                isPositive: true
+            ))
+        } else if workoutsDelta < 0 {
+            let v = abs(workoutsDelta)
+            trends.append(.init(
+                message: "\(v) fewer workout\(v == 1 ? "" : "s") than last week",
+                systemImage: "arrow.down.right",
+                isPositive: false
+            ))
+        }
+
+        let setsDelta = latest.totalSets - previous.totalSets
+        if setsDelta > 0 {
+            trends.append(.init(
+                message: "\(setsDelta) more sets than last week",
+                systemImage: "chart.line.uptrend.xyaxis",
+                isPositive: true
+            ))
+        } else if setsDelta < 0 {
+            trends.append(.init(
+                message: "\(abs(setsDelta)) fewer sets than last week",
+                systemImage: "chart.line.downtrend.xyaxis",
+                isPositive: false
+            ))
+        }
+
+        let volumeDelta = latest.totalVolume - previous.totalVolume
+        if volumeDelta > 0 {
+            trends.append(.init(
+                message: "Higher volume than last week",
+                systemImage: "bolt.fill",
+                isPositive: true
+            ))
+        } else if volumeDelta < 0 {
+            trends.append(.init(
+                message: "Lower volume than last week",
+                systemImage: "bolt.slash.fill",
+                isPositive: false
+            ))
+        }
+
+        if trends.isEmpty, latest.workoutCount > 0 || latest.totalSets > 0 || latest.totalVolume > 0 {
+            trends.append(.init(
+                message: "Steady training compared to last week",
+                systemImage: "equal.circle",
+                isPositive: true
+            ))
+        }
+
+        return Array(trends.prefix(max(1, maxCount)))
+    }
+
+    func trackedExerciseNames() -> [String] {
+        let names = Set(workouts.flatMap { $0.exercises.map(\.name) })
+        return names.sorted()
+    }
+
+    func exerciseTrend(for exerciseName: String, limit: Int = 20) -> [ExerciseTrendPoint] {
+        let logs = workouts
+            .flatMap(\.exercises)
+            .filter { $0.name == exerciseName }
+            .sorted { $0.createdAt < $1.createdAt }
+
+        guard !logs.isEmpty else { return [] }
+        let points = logs.map { log in
+            ExerciseTrendPoint(
+                date: log.createdAt,
+                weight: log.weight,
+                reps: log.reps,
+                volume: log.weight * Double(log.reps) * Double(log.sets)
+            )
+        }
+        return Array(points.suffix(max(1, limit)))
+    }
+
     /// Last N weeks: (weekStart, workoutCount, totalSets, totalVolume).
     struct WeekStat: Identifiable {
         let id: Date
@@ -134,6 +337,24 @@ final class WorkoutsViewModel {
             .first
     }
 
+    /// Returns today's active (unfinished) workout if present.
+    func activeWorkoutForToday() -> Workout? {
+        let today = calendar.startOfDay(for: Date())
+        return workouts
+            .filter { calendar.isDate($0.date, inSameDayAs: today) && !$0.isFinished }
+            .sorted(by: { $0.date > $1.date })
+            .first
+    }
+
+    @discardableResult
+    func startOrContinueWorkoutForToday() -> Workout? {
+        if let active = activeWorkoutForToday() {
+            return active
+        }
+        let today = calendar.startOfDay(for: Date())
+        return addWorkout(date: today)
+    }
+
     @discardableResult
     func addWorkout(date: Date = Date()) -> Workout? {
         guard let modelContext else { return nil }
@@ -150,6 +371,108 @@ final class WorkoutsViewModel {
         }
     }
 
+    @discardableResult
+    func addWorkout(from template: WorkoutTemplate, date: Date = Date()) -> Workout? {
+        guard let modelContext else { return nil }
+
+        let workout = Workout(date: date)
+        modelContext.insert(workout)
+
+        addTemplateExercises(template, into: workout, using: modelContext)
+
+        do {
+            template.updatedAt = Date()
+            try modelContext.save()
+            fetchWorkouts()
+            return workout
+        } catch {
+            AppLog.persistence.error("Create workout from template failed: \(String(describing: error))")
+            onError?("Couldn’t create workout from template. Please try again.")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func duplicateWorkout(_ source: Workout, date: Date = Date()) -> Workout? {
+        guard let modelContext else { return nil }
+        let workout = Workout(date: date)
+        modelContext.insert(workout)
+        copyExercises(from: source, to: workout, using: modelContext)
+        do {
+            try modelContext.save()
+            fetchWorkouts()
+            return workout
+        } catch {
+            AppLog.persistence.error("Duplicate workout failed: \(String(describing: error))")
+            onError?("Couldn’t duplicate workout. Please try again.")
+            return nil
+        }
+    }
+
+    @discardableResult
+    func mergeWorkout(_ source: Workout, into target: Workout) -> Bool {
+        guard let modelContext else { return false }
+        copyExercises(from: source, to: target, using: modelContext)
+        do {
+            try modelContext.save()
+            fetchWorkouts()
+            return true
+        } catch {
+            AppLog.persistence.error("Merge workout failed: \(String(describing: error))")
+            onError?("Couldn’t merge workout. Please try again.")
+            return false
+        }
+    }
+
+    @discardableResult
+    func addTemplate(_ template: WorkoutTemplate, to workout: Workout) -> Bool {
+        guard let modelContext else { return false }
+        addTemplateExercises(template, into: workout, using: modelContext)
+        do {
+            template.updatedAt = Date()
+            try modelContext.save()
+            fetchWorkouts()
+            return true
+        } catch {
+            AppLog.persistence.error("Add template to existing workout failed: \(String(describing: error))")
+            onError?("Couldn’t add template to workout. Please try again.")
+            return false
+        }
+    }
+
+    private func addTemplateExercises(_ template: WorkoutTemplate, into workout: Workout, using modelContext: ModelContext) {
+        let start = (workout.exercises.map(\.orderIndex).max() ?? -1) + 1
+        for (offset, item) in template.sortedExercises.enumerated() {
+            let log = ExerciseLog(
+                orderIndex: start + offset,
+                name: item.name,
+                weight: item.defaultWeight,
+                reps: max(0, item.defaultReps),
+                sets: max(0, item.defaultSets),
+                workout: workout
+            )
+            modelContext.insert(log)
+            workout.exercises.append(log)
+        }
+    }
+
+    private func copyExercises(from source: Workout, to target: Workout, using modelContext: ModelContext) {
+        let start = (target.exercises.map(\.orderIndex).max() ?? -1) + 1
+        for (offset, log) in source.sortedExercises.enumerated() {
+            let copied = ExerciseLog(
+                orderIndex: start + offset,
+                name: log.name,
+                weight: log.weight,
+                reps: log.reps,
+                sets: log.sets,
+                notes: log.notes,
+                workout: target
+            )
+            modelContext.insert(copied)
+            target.exercises.append(copied)
+        }
+    }
+
     func deleteWorkout(_ workout: Workout) {
         guard let modelContext else { return }
         modelContext.delete(workout)
@@ -160,5 +483,37 @@ final class WorkoutsViewModel {
             onError?("Couldn’t delete workout. Please try again.")
         }
         fetchWorkouts()
+    }
+
+    @discardableResult
+    func finishWorkout(_ workout: Workout) -> Bool {
+        guard let modelContext else { return false }
+        workout.isFinished = true
+        workout.finishedAt = Date()
+        do {
+            try modelContext.save()
+            fetchWorkouts()
+            return true
+        } catch {
+            AppLog.persistence.error("Finish workout save failed: \(String(describing: error))")
+            onError?("Couldn’t finish workout. Please try again.")
+            return false
+        }
+    }
+
+    @discardableResult
+    func reopenWorkout(_ workout: Workout) -> Bool {
+        guard let modelContext else { return false }
+        workout.isFinished = false
+        workout.finishedAt = nil
+        do {
+            try modelContext.save()
+            fetchWorkouts()
+            return true
+        } catch {
+            AppLog.persistence.error("Reopen workout save failed: \(String(describing: error))")
+            onError?("Couldn’t continue workout. Please try again.")
+            return false
+        }
     }
 }

@@ -63,10 +63,11 @@ struct ForgeProgressRingsView: View {
     }
 
     private func ringView(progress: Double, label: String, value: String) -> some View {
-        VStack(spacing: ForgeTheme.spaceXS) {
+        let isInactive = progress <= 0
+        return VStack(spacing: ForgeTheme.spaceXS) {
             ZStack {
                 Circle()
-                    .stroke(ForgeTheme.ringTrackLight, lineWidth: ringLineWidth)
+                    .stroke(ForgeTheme.ringTrackLight.opacity(isInactive ? 0.45 : 1), lineWidth: ringLineWidth)
                     .frame(width: ringSize, height: ringSize)
                 Circle()
                     .trim(from: 0, to: min(1, progress))
