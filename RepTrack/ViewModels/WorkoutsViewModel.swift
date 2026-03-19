@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import os
 
 @Observable
 final class WorkoutsViewModel {
@@ -122,6 +123,15 @@ final class WorkoutsViewModel {
             }
         }
         return max(best, current)
+    }
+
+    /// Returns an existing workout for the given calendar day, if any (most recent by date for that day).
+    /// Use to avoid duplicate same-day workouts when adding.
+    func workout(for date: Date) -> Workout? {
+        workouts
+            .filter { calendar.isDate($0.date, inSameDayAs: date) }
+            .sorted(by: { $0.date > $1.date })
+            .first
     }
 
     @discardableResult

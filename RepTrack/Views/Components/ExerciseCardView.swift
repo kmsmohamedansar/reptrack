@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 struct ExerciseCardView: View {
     @Environment(\.modelContext) private var modelContext
@@ -15,19 +16,22 @@ struct ExerciseCardView: View {
     var onUpdate: ((Double, Int, Int) -> Void)?
     var onEdit: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onAutosaveError: ((String) -> Void)?
 
     init(
         log: ExerciseLog,
         progression previous: ExerciseLog?,
         onUpdate: ((Double, Int, Int) -> Void)? = nil,
         onEdit: (() -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        onAutosaveError: ((String) -> Void)? = nil
     ) {
         self.log = log
         self.previous = previous
         self.onUpdate = onUpdate
         self.onEdit = onEdit
         self.onDelete = onDelete
+        self.onAutosaveError = onAutosaveError
     }
 
     @State private var weightText: String = ""
@@ -170,6 +174,7 @@ struct ExerciseCardView: View {
             try modelContext.save()
         } catch {
             AppLog.persistence.error("Autosave exercise failed: \(String(describing: error))")
+            onAutosaveError?("Couldn’t save. Try again.")
         }
         if let o = onUpdate {
             o(log.weight, log.reps, log.sets)

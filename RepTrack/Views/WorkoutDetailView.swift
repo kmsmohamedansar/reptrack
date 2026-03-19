@@ -6,6 +6,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import os
 
 private struct ExerciseLogSheetItem: Identifiable {
     let log: ExerciseLog
@@ -53,6 +54,9 @@ struct WorkoutDetailView: View {
                             },
                             onDelete: {
                                 exerciseToDelete = ExerciseLogDeleteItem(log: log)
+                            },
+                            onAutosaveError: { message in
+                                notices.showError(message)
                             }
                         )
                     }
@@ -123,7 +127,11 @@ struct WorkoutDetailView: View {
                 Text("This can’t be undone.")
             }
 
-            ForgeFloatingButton(action: { showingAddExercise = true })
+            ForgeFloatingButton(
+                action: { showingAddExercise = true },
+                accessibilityLabel: "Add exercise",
+                accessibilityHint: "Opens add exercise screen"
+            )
                 .padding(.horizontal, ForgeTheme.gutter)
                 .padding(.bottom, ForgeTheme.gutter)
         }

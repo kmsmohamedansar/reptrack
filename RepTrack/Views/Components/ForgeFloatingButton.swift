@@ -8,6 +8,7 @@ import SwiftUI
 struct ForgeFloatingButton: View {
     let action: () -> Void
     var accessibilityLabel: String = "Add workout"
+    var accessibilityHint: String = "Opens the add workout screen"
 
     var body: some View {
         Button(action: action) {
@@ -27,7 +28,7 @@ struct ForgeFloatingButton: View {
         }
         .buttonStyle(ForgeFloatingButtonStyle())
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Opens the add workout screen")
+        .accessibilityHint(accessibilityHint)
     }
 }
 

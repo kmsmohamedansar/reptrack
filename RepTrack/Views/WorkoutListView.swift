@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 private struct WorkoutDeleteItem: Identifiable {
     let workout: Workout
@@ -88,7 +89,10 @@ struct WorkoutListView: View {
                 }
                 .sheet(isPresented: $showingAddWorkout) {
                     AddWorkoutView(onSave: { date in
-                        if let newWorkout = viewModel.addWorkout(date: date) {
+                        if let existing = viewModel.workout(for: date) {
+                            selectedWorkout = existing
+                            notices.showInfo("Opened existing workout for that day.")
+                        } else if let newWorkout = viewModel.addWorkout(date: date) {
                             selectedWorkout = newWorkout
                         }
                         showingAddWorkout = false

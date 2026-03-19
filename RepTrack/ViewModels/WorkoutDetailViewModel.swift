@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import os
 
 @Observable
 final class WorkoutDetailViewModel {

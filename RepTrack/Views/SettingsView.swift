@@ -5,6 +5,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -51,11 +52,6 @@ struct SettingsView: View {
             Text("Data is stored locally on your device.")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(ForgeTheme.primaryText)
-
-            Text("Your data is محفوظ locally on your device.")
-                .font(.subheadline)
-                .foregroundStyle(ForgeTheme.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(ForgeTheme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
