@@ -61,6 +61,13 @@ enum ForgeTheme {
     /// Extra bottom padding to keep content clear of the floating action button.
     static let fabClearance: CGFloat = 96
 
+    // MARK: - Motion tokens
+    static let quick: Double = 0.2
+    static let standard: Double = 0.3
+    static var emphasisSpring: Animation {
+        .spring(response: 0.35, dampingFraction: 0.8)
+    }
+
     // MARK: - Background (light)
     static var backgroundGradient: LinearGradient {
         LinearGradient(

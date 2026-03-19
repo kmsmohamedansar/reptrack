@@ -94,7 +94,7 @@ struct AnalyticsView: View {
     }
 
     private func metricPill(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
+        return VStack(spacing: 2) {
             ForgeTypography.statValue(value)
             ForgeTypography.statLabel(label)
         }
@@ -133,7 +133,7 @@ struct AnalyticsView: View {
                 .pickerStyle(.menu)
 
                 if points.count < 2 {
-                    Text("Log this exercise at least twice to see trends.")
+                    Text("Not enough data yet. Log this exercise twice to see trends.")
                         .font(.subheadline)
                         .foregroundStyle(ForgeTheme.secondaryText)
                         .padding(.vertical, ForgeTheme.spaceS)
@@ -158,7 +158,7 @@ struct AnalyticsView: View {
                     )
                 }
             } else {
-                Text("Add exercises to start viewing lift-specific trends.")
+                Text("No exercise data yet. Add exercises to unlock lift trends.")
                     .font(.subheadline)
                     .foregroundStyle(ForgeTheme.secondaryText)
                     .padding(.vertical, ForgeTheme.spaceS)
@@ -176,7 +176,7 @@ struct AnalyticsView: View {
         value: @escaping (WorkoutsViewModel.ExerciseTrendPoint) -> Double,
         yLabel: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
+        return VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(ForgeTheme.primaryText)

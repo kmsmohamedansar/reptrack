@@ -49,6 +49,9 @@ struct WorkoutDetailView: View {
     @State private var notesSaveTask: Task<Void, Never>?
     @State private var isSyncingWorkoutNotes = false
     @State private var isEditingWorkoutNotes = false
+    @State private var successBannerMessage: String?
+    @State private var showNotesSavedCue = false
+    @State private var notesSavedCueTask: Task<Void, Never>?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -118,7 +121,7 @@ struct WorkoutDetailView: View {
                         Button {
                             showingSaveTemplate = true
                         } label: {
-                            Label("Save as Template", systemImage: "square.on.square")
+                            Label("Save template", systemImage: "square.on.square")
                         }
                         Button {
                             startDuplicateFlow(from: workout)
@@ -129,7 +132,7 @@ struct WorkoutDetailView: View {
                             Button {
                                 showingReorderExercises = true
                             } label: {
-                                Label("Reorder Exercises", systemImage: "line.3.horizontal")
+                                Label("Reorder exercises", systemImage: "line.3.horizontal")
                             }
                         }
                         if workout.isFinished {
@@ -138,13 +141,13 @@ struct WorkoutDetailView: View {
                                     notices.showInfo("Workout is active again.")
                                 }
                             } label: {
-                                Label("Continue Workout", systemImage: "play.fill")
+                                Label("Continue workout", systemImage: "play.fill")
                             }
                         } else {
                             Button {
                                 showFinishConfirm = true
                             } label: {
-                                Label("Finish Workout", systemImage: "checkmark.circle")
+                                Label("Finish workout", systemImage: "checkmark.circle")
                             }
                         }
                     } label: {
@@ -178,7 +181,8 @@ struct WorkoutDetailView: View {
             .sheet(isPresented: $showingSaveTemplate) {
                 SaveWorkoutTemplateView(defaultName: defaultTemplateName) { name in
                     if viewModel.saveWorkoutAsTemplate(workout, templateName: name) {
-                        notices.showInfo("Template saved.")
+                        ForgeHaptics.impactLight()
+                        successBannerMessage = "Template saved"
                     }
                     showingSaveTemplate = false
                 } onCancel: {
@@ -205,14 +209,15 @@ struct WorkoutDetailView: View {
                         }
                         .onMove { indices, newOffset in
                             if viewModel.reorderExercises(in: workout, from: indices, to: newOffset) {
-                                notices.showInfo("Exercise order updated.")
+                                ForgeHaptics.impactLight()
+                                successBannerMessage = "Exercise order updated"
                             }
                         }
                     }
                     .environment(\.editMode, .constant(.active))
                     .scrollContentBackground(.hidden)
                     .background(ForgeTheme.backgroundGradient.ignoresSafeArea())
-                    .navigationTitle("Reorder Exercises")
+                    .navigationTitle("Reorder exercises")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
@@ -245,7 +250,8 @@ struct WorkoutDetailView: View {
                 Button("Cancel", role: .cancel) {}
                 Button("Finish", role: .destructive) {
                     if viewModel.finishWorkout(workout) {
-                        notices.showInfo("Workout finished.")
+                        ForgeHaptics.success()
+                        successBannerMessage = completionMessage()
                     }
                 }
             } message: {
@@ -295,6 +301,7 @@ struct WorkoutDetailView: View {
             notesSaveTask?.cancel()
             saveWorkoutNotes()
         }
+        .successBanner(message: $successBannerMessage)
     }
 
     private var emptyExercisesCard: some View {
@@ -309,7 +316,7 @@ struct WorkoutDetailView: View {
                 Spacer(minLength: 0)
             }
 
-            Text("Add your first exercise to start tracking sets, reps, and progress insights.")
+            Text("Start this session by adding your first exercise.")
                 .font(.body)
                 .foregroundStyle(ForgeTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -412,7 +419,7 @@ struct WorkoutDetailView: View {
                 VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
                     ForgeTypography.section("Personal records")
                     ForEach(prs.prefix(4)) { pr in
-                        Text("• \(pr.exerciseName): \(pr.prTypes.map(\.rawValue).joined(separator: \", \"))")
+                        Text("• \(pr.exerciseName): \(pr.prTypes.map(\.rawValue).joined(separator: ", "))")
                             .font(.caption)
                             .foregroundStyle(ForgeTheme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -481,7 +488,7 @@ struct WorkoutDetailView: View {
         let trimmedNotes = workoutNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasNotes = !trimmedNotes.isEmpty
 
-        VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
+        return VStack(alignment: .leading, spacing: ForgeTheme.spaceS) {
             HStack {
                 ForgeTypography.section("Notes")
                 Spacer(minLength: 0)
@@ -545,6 +552,13 @@ struct WorkoutDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Text("Saved just now")
+                .font(.caption2)
+                .foregroundStyle(ForgeTheme.tertiaryText)
+                .opacity(showNotesSavedCue ? 1 : 0)
+                .animation(.easeInOut(duration: ForgeTheme.quick), value: showNotesSavedCue)
+                .frame(height: 14, alignment: .leading)
         }
         .padding(ForgeTheme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -578,9 +592,23 @@ struct WorkoutDetailView: View {
         workout.notes = workoutNotes
         do {
             try modelContext.save()
+            showNotesSavedConfidenceCue()
         } catch {
             AppLog.persistence.error("Save workout notes failed: \(String(describing: error))")
             notices.showError("Couldn’t save notes. Please try again.")
+        }
+    }
+
+    private func showNotesSavedConfidenceCue() {
+        notesSavedCueTask?.cancel()
+        showNotesSavedCue = true
+        notesSavedCueTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 1_600_000_000)
+            } catch {
+                return
+            }
+            showNotesSavedCue = false
         }
     }
 
@@ -607,6 +635,18 @@ struct WorkoutDetailView: View {
             duplicatedWorkout = duplicated
             notices.showInfo("Workout duplicated.")
         }
+    }
+
+    private func completionMessage() -> String {
+        let messages = [
+            "Strong session.",
+            "Momentum building.",
+            "Great consistency.",
+            "Nice work.",
+            "Another step forward."
+        ]
+        let index = abs(Int(workout.persistentModelID.hashValue)) % messages.count
+        return messages[index]
     }
 }
 

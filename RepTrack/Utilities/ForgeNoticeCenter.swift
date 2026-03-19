@@ -16,11 +16,15 @@ final class ForgeNoticeCenter: ObservableObject {
 
     @Published var notice: Notice?
 
-    func showInfo(_ message: String) {
+    func showInfo(_ message: String, haptic: Bool = true) {
+        if haptic {
+            ForgeHaptics.success()
+        }
         show(message, kind: .info)
     }
 
     func showError(_ message: String) {
+        ForgeHaptics.error()
         show(message, kind: .error)
     }
 
@@ -81,7 +85,7 @@ extension View {
                     .padding(.horizontal, ForgeTheme.gutter)
                     .padding(.top, ForgeTheme.spaceM)
                     .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: center.notice)
+                    .animation(.easeInOut(duration: ForgeTheme.quick), value: center.notice)
             }
         }
     }

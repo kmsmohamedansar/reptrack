@@ -43,6 +43,9 @@ struct ExerciseCardView: View {
     @FocusState private var focusedField: Field?
     @State private var isSyncingFromModel = false
     @State private var autosaveTask: Task<Void, Never>?
+    @State private var didTriggerPRHaptic = false
+    @State private var showSavedCue = false
+    @State private var savedCueTask: Task<Void, Never>?
 
     private enum Field {
         case weight, reps, sets
@@ -93,6 +96,7 @@ struct ExerciseCardView: View {
         .forgeCard()
         .onAppear {
             syncFromLog()
+            triggerPRHapticIfNeeded()
         }
         .onChange(of: log.weight) { _, _ in syncFromLog() }
         .onChange(of: log.reps) { _, _ in syncFromLog() }
@@ -104,6 +108,9 @@ struct ExerciseCardView: View {
             if newValue == nil, let o = onUpdate {
                 o(parsedWeight, parsedReps, parsedSets)
             }
+        }
+        .onChange(of: prBadgeText) { _, _ in
+            triggerPRHapticIfNeeded()
         }
         .onDisappear {
             // Best-effort commit if user navigates away mid-edit.
@@ -191,6 +198,7 @@ struct ExerciseCardView: View {
         log.sets = max(0, parsedSets)
         do {
             try modelContext.save()
+            showInlineSavedConfidenceCue()
         } catch {
             AppLog.persistence.error("Autosave exercise failed: \(String(describing: error))")
             onAutosaveError?("Couldn’t save. Try again.")
@@ -236,6 +244,12 @@ struct ExerciseCardView: View {
                     commitEdit(onUpdate: onUpdate)
                 }
             }
+            Text("Saved just now")
+                .font(.caption2)
+                .foregroundStyle(ForgeTheme.tertiaryText)
+                .opacity(showSavedCue ? 1 : 0)
+                .animation(.easeInOut(duration: ForgeTheme.quick), value: showSavedCue)
+                .frame(height: 14, alignment: .leading)
         }
     }
 
@@ -301,6 +315,28 @@ struct ExerciseCardView: View {
             .replacingOccurrences(of: " · ", with: "  ▲ ")
         if cleaned == full { return full }
         return "▲ \(cleaned)"
+    }
+
+    private func triggerPRHapticIfNeeded() {
+        if prBadgeText != nil, !didTriggerPRHaptic {
+            ForgeHaptics.success()
+            didTriggerPRHaptic = true
+        } else if prBadgeText == nil {
+            didTriggerPRHaptic = false
+        }
+    }
+
+    private func showInlineSavedConfidenceCue() {
+        savedCueTask?.cancel()
+        showSavedCue = true
+        savedCueTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 1_400_000_000)
+            } catch {
+                return
+            }
+            showSavedCue = false
+        }
     }
 }
 

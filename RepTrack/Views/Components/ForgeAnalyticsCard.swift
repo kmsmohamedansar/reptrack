@@ -35,7 +35,7 @@ struct ForgeAnalyticsCard: View {
             ForgeTypography.section("Weekly Analytics")
 
             if weekStats.isEmpty {
-                Text("Complete workouts to see analytics")
+                Text("No analytics yet. Complete a workout to view trends.")
                     .font(.subheadline)
                     .foregroundStyle(ForgeTheme.tertiaryText)
                     .frame(maxWidth: .infinity)

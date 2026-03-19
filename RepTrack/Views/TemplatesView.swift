@@ -44,7 +44,7 @@ struct TemplatesView: View {
             Text("No templates yet")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(ForgeTheme.primaryText)
-            Text("Open any workout and use Save as Template to reuse your structure later.")
+            Text("Save a workout as a template to reuse it anytime.")
                 .font(.body)
                 .foregroundStyle(ForgeTheme.secondaryText)
                 .multilineTextAlignment(.center)

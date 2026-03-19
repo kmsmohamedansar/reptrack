@@ -35,6 +35,7 @@ struct WorkoutListView: View {
     @State private var workoutToDelete: WorkoutDeleteItem?
     @State private var pendingTemplateStart: TemplateStartItem?
     @State private var pendingDuplicateStart: WorkoutDuplicateItem?
+    @State private var successBannerMessage: String?
 
     private var calendar: Calendar { Calendar.current }
     private var today: Date { calendar.startOfDay(for: Date()) }
@@ -172,7 +173,8 @@ struct WorkoutListView: View {
                         guard let item = pendingTemplateStart, let target = todayTargetWorkout else { return }
                         if viewModel.addTemplate(item.template, to: target) {
                             selectedWorkout = target
-                            notices.showInfo("Template added to today’s workout.")
+                            ForgeHaptics.impactLight()
+                            successBannerMessage = "Template saved"
                         }
                         pendingTemplateStart = nil
                     }
@@ -180,7 +182,8 @@ struct WorkoutListView: View {
                         guard let item = pendingTemplateStart else { return }
                         if let newWorkout = viewModel.addWorkout(from: item.template, date: today) {
                             selectedWorkout = newWorkout
-                            notices.showInfo("Workout created from template.")
+                            ForgeHaptics.impactLight()
+                            successBannerMessage = "Template saved"
                         }
                         pendingTemplateStart = nil
                     }
@@ -226,6 +229,7 @@ struct WorkoutListView: View {
             }
             .background(ForgeTheme.backgroundGradient.ignoresSafeArea())
         }
+        .successBanner(message: $successBannerMessage)
     }
 
     private var headerSection: some View {
@@ -272,12 +276,12 @@ struct WorkoutListView: View {
                 }
 
                 VStack(spacing: ForgeTheme.spaceS) {
-                    Text("Start your first workout today")
+                    Text("No workouts yet")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(ForgeTheme.primaryText)
                         .multilineTextAlignment(.center)
 
-                    Text("Log your first session and start building momentum.")
+                    Text("Start your first session. Tap Add Workout to begin.")
                         .font(.body)
                         .foregroundStyle(ForgeTheme.secondaryText)
                         .multilineTextAlignment(.center)
@@ -402,7 +406,22 @@ struct WorkoutListView: View {
             if let active = todayActiveWorkout {
                 return active.exercises.isEmpty ? "Add your first exercise" : "Continue Workout"
             }
+            if isTodayDone {
+                return "Start another workout"
+            }
             return "Start Workout"
+        }()
+        let ctaAccessibilityLabel: String = {
+            if ctaTitle == "Continue Workout" {
+                return "Continue today's workout"
+            }
+            if ctaTitle == "Add your first exercise" {
+                return "Open workout and add your first exercise"
+            }
+            if ctaTitle == "Start another workout" {
+                return "Start another workout today"
+            }
+            return "Start today's workout"
         }()
         let guidanceText: String = {
             if let active = todayActiveWorkout {
@@ -463,7 +482,7 @@ struct WorkoutListView: View {
             .buttonStyle(.borderedProminent)
             .tint(ForgeTheme.gold)
             .foregroundStyle(.black)
-            .accessibilityLabel(hasActiveWorkout ? "Continue today's workout" : "Start today's workout")
+            .accessibilityLabel(ctaAccessibilityLabel)
             .accessibilityHint("Opens today's workout")
 
             if let _ = todayActiveWorkout, activeExerciseCount > 0 {
@@ -477,7 +496,8 @@ struct WorkoutListView: View {
             if let active = todayActiveWorkout, !active.exercises.isEmpty {
                 Button {
                     if viewModel.finishWorkout(active) {
-                        notices.showInfo("Workout finished.")
+                        ForgeHaptics.success()
+                        successBannerMessage = completionMessage(for: active)
                     }
                 } label: {
                     HStack(spacing: ForgeTheme.spaceS) {
@@ -526,7 +546,7 @@ struct WorkoutListView: View {
     }
 
     private func sessionStatPill(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
+        return VStack(spacing: 2) {
             Text(value)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(ForgeTheme.primaryText)
@@ -543,6 +563,18 @@ struct WorkoutListView: View {
     private func formatVolumeCompact(_ volume: Double) -> String {
         if volume >= 1000 { return String(format: "%.1fk", volume / 1000) }
         return "\(Int(volume))"
+    }
+
+    private func completionMessage(for workout: Workout) -> String {
+        let messages = [
+            "Strong session.",
+            "Momentum building.",
+            "Great consistency.",
+            "Nice work.",
+            "Another step forward."
+        ]
+        let index = abs(Int(workout.persistentModelID.hashValue)) % messages.count
+        return messages[index]
     }
 
     private var summaryCardSection: some View {
@@ -593,13 +625,13 @@ struct WorkoutListView: View {
     }
 
     private func sectionHeader(_ title: String) -> some View {
-        ForgeTypography.section(title)
+        return ForgeTypography.section(title)
             .padding(.horizontal, ForgeTheme.gutter)
             .padding(.top, ForgeTheme.spaceS)
     }
 
     private func workoutCards(_ workouts: [Workout]) -> some View {
-        LazyVStack(spacing: ForgeTheme.spaceM) {
+        return LazyVStack(spacing: ForgeTheme.spaceM) {
             ForEach(Array(workouts.enumerated()), id: \.element.persistentModelID) { index, workout in
                 Button {
                     selectedWorkout = workout
@@ -618,7 +650,7 @@ struct WorkoutListView: View {
                     insertion: .opacity.combined(with: .move(edge: .bottom)),
                     removal: .opacity
                 ))
-                .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.05), value: viewModel.workouts.count)
+                .animation(.easeOut(duration: ForgeTheme.standard).delay(Double(index) * 0.05), value: viewModel.workouts.count)
             }
         }
         .padding(.horizontal, ForgeTheme.gutter)
@@ -630,7 +662,7 @@ private struct ForgeCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
+            .animation(.easeInOut(duration: ForgeTheme.quick), value: configuration.isPressed)
     }
 }
 

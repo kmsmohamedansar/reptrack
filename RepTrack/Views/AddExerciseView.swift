@@ -61,7 +61,7 @@ struct AddExerciseView: View {
                     detailsSection
                     notesSection
                 }
-                .animation(.easeInOut(duration: 0.25), value: canSave)
+                .animation(.easeInOut(duration: ForgeTheme.standard), value: canSave)
                 .padding(ForgeTheme.gutter)
             }
             .background(ForgeTheme.backgroundGradient.ignoresSafeArea())
@@ -90,7 +90,7 @@ struct AddExerciseView: View {
                     }
                     .fontWeight(.semibold)
                     .disabled(!canSave)
-                    .animation(.easeInOut(duration: 0.25), value: canSave)
+                    .animation(.easeInOut(duration: ForgeTheme.standard), value: canSave)
                 }
             }
         }
@@ -101,7 +101,7 @@ struct AddExerciseView: View {
             HStack(spacing: ForgeTheme.spaceS) {
                 ForEach(categories, id: \.self) { category in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.easeInOut(duration: ForgeTheme.quick)) {
                             selectedCategory = category
                         }
                     } label: {
@@ -167,7 +167,7 @@ struct AddExerciseView: View {
                             isSelected: selectedWgerId == exercise.id
                         )
                         .onTapGesture {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            withAnimation(ForgeTheme.emphasisSpring) {
                                 selectedWgerId = exercise.id
                                 selectedTemplate = nil
                                 name = exercise.name
@@ -185,7 +185,7 @@ struct AddExerciseView: View {
                                 isSelected: selectedTemplate == template
                             )
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                withAnimation(ForgeTheme.emphasisSpring) {
                                     selectedTemplate = template
                                     selectedWgerId = nil
                                     name = template.name

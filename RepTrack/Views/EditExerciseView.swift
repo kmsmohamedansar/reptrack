@@ -95,7 +95,7 @@ struct EditExerciseView: View {
             HStack(spacing: ForgeTheme.spaceS) {
                 ForEach(categories, id: \.self) { category in
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.easeInOut(duration: ForgeTheme.quick)) {
                             selectedCategory = category
                         }
                     } label: {
@@ -159,7 +159,7 @@ struct EditExerciseView: View {
                             isSelected: selectedWgerId == exercise.id || name == exercise.name
                         )
                         .onTapGesture {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            withAnimation(ForgeTheme.emphasisSpring) {
                                 selectedWgerId = exercise.id
                                 selectedTemplate = nil
                                 name = exercise.name
@@ -177,7 +177,7 @@ struct EditExerciseView: View {
                                 isSelected: selectedTemplate == template || name == template.name
                             )
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                withAnimation(ForgeTheme.emphasisSpring) {
                                     selectedTemplate = template
                                     selectedWgerId = nil
                                     name = template.name

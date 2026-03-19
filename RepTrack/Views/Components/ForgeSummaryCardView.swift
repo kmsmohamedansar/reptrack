@@ -34,10 +34,10 @@ struct ForgeSummaryCardView: View {
 
             if workoutsValue == 0 && setsValue == 0 {
                 VStack(alignment: .leading, spacing: ForgeTheme.spaceXS) {
-                    Text("Start your first workout to see progress")
+                    Text("No progress yet")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(ForgeTheme.secondaryText)
-                    Text("Your weekly stats will appear here")
+                    Text("Complete a workout to unlock your weekly summary.")
                         .font(.caption)
                         .foregroundStyle(ForgeTheme.tertiaryText)
                 }
