@@ -1,0 +1,25 @@
+## Xcode / Swift
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+*.moved-aside
+*.swp
+*.tmp
+
+## SwiftPM
+.swiftpm/
+Package.resolved
+
+## macOS
+.DS_Store
+
+## Instruments / logs
+*.trace
+*.log
+
