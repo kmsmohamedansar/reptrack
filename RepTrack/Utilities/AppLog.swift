@@ -1,5 +1,5 @@
 import Foundation
-import OSLog
+import os
 
 enum AppLog {
     static let subsystem = Bundle.main.bundleIdentifier ?? "RepTrack"

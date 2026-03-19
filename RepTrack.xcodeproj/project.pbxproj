@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1E6479D12F63F86900A112E1 /* RepTrack/exercises.json in Resources */ = {isa = PBXBuildFile; fileRef = 1E6479D02F63F86900A112E0 /* RepTrack/exercises.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -115,7 +114,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1E6479D12F63F86900A112E1 /* RepTrack/exercises.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
