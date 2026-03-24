@@ -5,7 +5,8 @@ Raster PNGs in this set are generated from the master **1024×1024** image (`App
 ## Project settings
 
 - **App Icons Source / Asset Catalog App Icon Set Name:** `AppIcon` (`ASSETCATALOG_COMPILER_APPICON_NAME`)
-- **Generated Info.plist:** `CFBundleIconName` = `AppIcon` (`INFOPLIST_KEY_CFBundleIconName`)
+- **Merged Info.plist:** `INFOPLIST_FILE` = `RepTrack-Info.plist` (project root) supplies **root-level** `CFBundleIconName` = `AppIcon` for App Store validation, merged with `GENERATE_INFOPLIST_FILE` output.
+- **Build settings:** `INFOPLIST_KEY_CFBundleIconName` = `AppIcon`; `ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS` = `YES` (ensures all icon renditions ship in `Assets.car`).
 
 ## Regenerating sizes
 
