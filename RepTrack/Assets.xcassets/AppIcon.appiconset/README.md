@@ -1,33 +1,20 @@
-# Northstar Forge App Icon
+# RepTrack App Icon
 
-The app icon is drawn in code by `AppIconView` (see `Views/Components/AppIconView.swift`).
+Raster PNGs in this set are generated from the master **1024×1024** image (`AppIcon-1024.png`). The asset catalog lists explicit **iPhone** and **iPad** slots (including **60pt @2x** → 120×120 and **76pt @2x** → 152×152).
 
-## To generate the 1024×1024 asset
+## Project settings
 
-1. **Option A – Preview export (Xcode 14+)**  
-   Open `AppIconView.swift`, run the preview, then use **File → Export** from the preview canvas (or screenshot the 1024pt preview).
+- **App Icons Source / Asset Catalog App Icon Set Name:** `AppIcon` (`ASSETCATALOG_COMPILER_APPICON_NAME`)
+- **Generated Info.plist:** `CFBundleIconName` = `AppIcon` (`INFOPLIST_KEY_CFBundleIconName`)
 
-2. **Option B – ImageRenderer (iOS 16+)**  
-   In code, use:
-   ```swift
-   let view = AppIconView(variation: .standard, size: 1024)
-   let renderer = ImageRenderer(content: view)
-   if let image = renderer.uiImage {
-       // Save or copy image to AppIcon.appiconset as AppIcon.png
-   }
-   ```
+## Regenerating sizes
 
-3. **Option C – Simulator screenshot**  
-   Add a temporary screen that shows `AppIconView(size: 1024)` full screen, run in Simulator, then **File → Save Screen** (or Cmd+S) and crop to 1024×1024.
+From a new 1024×1024 master `source.png`:
 
-## Icon variations
+```bash
+for s in 20 29 40 58 60 76 80 87 120 152 167 180 1024; do
+  sips -z $s $s source.png --out "AppIcon-${s}.png"
+done
+```
 
-- **Standard (A):** North star above hammer + anvil + minimal ring.
-- **Variation B:** Hammer striking star spark.
-- **Variation C:** Minimal north star emblem only.
-
-Use `AppIconView(variation: .hammerSpark, size: 1024)` or `.starOnly` for B/C.
-
-## Sizes
-
-Use the 1024×1024 image in the **AppIcon** set. Xcode will generate 60, 76, 83.5, 1024, etc. from it. Ensure the single 1024×1024 slot in this appiconset references your exported PNG.
+Optional in-app artwork can still use `AppIconView` in SwiftUI; the store / home screen use this **AppIcon** set.
