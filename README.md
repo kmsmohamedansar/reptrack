@@ -14,7 +14,7 @@ Swift, SwiftUI, SwiftData, iOS 17+.
 
 - Domain-shaped SwiftData models for workouts and sets
 - UI tuned for quick input between sets
-- App Store Connect track (status on your portfolio site)
+- Live on the App Store: https://apps.apple.com/us/app/reptrack-workout-log/id6761032027
 
 ## Run
 
